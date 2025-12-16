@@ -20,7 +20,7 @@ def get_available_loras() -> List[str]:
         import folder_paths
 
         # Get the ComfyUI models directory
-        models_dir = folder_paths.get_folder_paths("checkpoints")[0]
+        models_dir = folder_paths.get_folder_paths("checkpoints")[1]
         # Navigate to vibevoice/loras directory
         loras_dir = os.path.join(os.path.dirname(models_dir), "vibevoice", "loras")
 
@@ -130,7 +130,7 @@ class VibeVoiceLoRANode:
             import folder_paths
 
             # Build full path to the LoRA folder
-            models_dir = folder_paths.get_folder_paths("checkpoints")[0]
+            models_dir = folder_paths.get_folder_paths("checkpoints")[1]
             loras_dir = os.path.join(os.path.dirname(models_dir), "vibevoice", "loras")
             lora_path = os.path.join(loras_dir, lora_name)
 
