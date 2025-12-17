@@ -182,6 +182,8 @@ def get_available_models() -> List[Tuple[str, str]]:
                         if models:
                             logger.info(f"Found {len(models)} VibeVoice model(s) in fallback directory: {fallback_dir}")
                             vibevoice_dir = fallback_dir  # Update for logging
+                    except (PermissionError, OSError) as e:
+                        logger.debug(f"Error scanning fallback directory: {e}")
                 if not models:
                     logger.warning("No valid models found in vibevoice directory")
                     logger.info(f"Please download models to: {vibevoice_dir}")
