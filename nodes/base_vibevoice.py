@@ -54,6 +54,31 @@ _model_cache = {
     "first_load_logged": False  # Track if we've logged the initial scan
 }
 
+def get_fallback_vibevoice_dir(primary_dir: str) -> Optional[str]:
+    """Get fallback vibevoice directory if primary doesn't exist or has no models
+    
+    Args:
+        primary_dir: Primary vibevoice directory path
+        
+    Returns:
+        Fallback directory path or None
+    """
+    # Check if primary is in ssd_models, then fallback to comfyui-gpu-9000/models/vibevoice
+    if "ssd_models" in primary_dir:
+        # Replace ssd_models with comfyui-gpu-9000/models
+        fallback_dir = primary_dir.replace("ssd_models", "comfyui-gpu-9000/models")
+        if os.path.exists(fallback_dir):
+            logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
+            return fallback_dir
+        
+        # Also check for comfyui-cpu-9000 fallback
+        fallback_dir = primary_dir.replace("ssd_models", "comfyui-cpu-9000/models")
+        if os.path.exists(fallback_dir):
+            logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
+            return fallback_dir
+    
+    return None
+
 def get_available_models() -> List[Tuple[str, str]]:
     """Scan models/vibevoice/ directory and return available models
 
@@ -72,19 +97,48 @@ def get_available_models() -> List[Tuple[str, str]]:
     try:
         import folder_paths
         models_dir = folder_paths.get_folder_paths("checkpoints")[1]
+        # Convert output path to models path
+        if "output" in models_dir:
+            models_dir = models_dir.replace("output", "models")
         vibevoice_dir = os.path.join(os.path.dirname(models_dir), "vibevoice")
 
+        # Check if primary directory exists, if not try fallback
         if not os.path.exists(vibevoice_dir):
-            os.makedirs(vibevoice_dir, exist_ok=True)
-            logger.info(f"Created vibevoice models directory: {vibevoice_dir}")
-            _model_cache["models"] = []
-            _model_cache["last_scan_time"] = current_time
-            return []
+            fallback_dir = get_fallback_vibevoice_dir(vibevoice_dir)
+            if fallback_dir:
+                vibevoice_dir = fallback_dir
+            else:
+                os.makedirs(vibevoice_dir, exist_ok=True)
+                logger.info(f"Created vibevoice models directory: {vibevoice_dir}")
+                _model_cache["models"] = []
+                _model_cache["last_scan_time"] = current_time
+                return []
 
         # First, collect all valid model folders
         valid_folders = []
         logger.debug(f"Scanning vibevoice directory: {vibevoice_dir}")
-        for folder in os.listdir(vibevoice_dir):
+        
+        # Check if directory is empty or has no valid models, try fallback
+        if os.path.exists(vibevoice_dir):
+            try:
+                dir_contents = os.listdir(vibevoice_dir)
+            except (PermissionError, OSError):
+                dir_contents = []
+        else:
+            dir_contents = []
+        
+        # If no contents or no valid models found, try fallback
+        if not dir_contents:
+            fallback_dir = get_fallback_vibevoice_dir(vibevoice_dir)
+            if fallback_dir and os.path.exists(fallback_dir):
+                logger.info(f"No models in primary directory, checking fallback: {fallback_dir}")
+                vibevoice_dir = fallback_dir
+                try:
+                    dir_contents = os.listdir(vibevoice_dir)
+                except (PermissionError, OSError):
+                    dir_contents = []
+        
+        for folder in dir_contents:
             folder_path = os.path.join(vibevoice_dir, folder)
 
             # Skip hidden folders, loras, and non-directories
@@ -112,8 +166,25 @@ def get_available_models() -> List[Tuple[str, str]]:
         # Only log on first scan to avoid spam
         if not _model_cache["first_load_logged"]:
             if not models:
-                logger.warning("No valid models found in vibevoice directory")
-                logger.info(f"Please download models to: {vibevoice_dir}")
+                # Try fallback directory one more time
+                fallback_dir = get_fallback_vibevoice_dir(vibevoice_dir)
+                if fallback_dir and os.path.exists(fallback_dir):
+                    logger.info(f"No models in primary location, checking fallback: {fallback_dir}")
+                    # Rescan fallback directory
+                    try:
+                        for folder in os.listdir(fallback_dir):
+                            folder_path = os.path.join(fallback_dir, folder)
+                            if folder.startswith(".") or folder == "loras" or not os.path.isdir(folder_path):
+                                continue
+                            if is_valid_model_folder(folder_path):
+                                display_name = transform_folder_name(folder, [])
+                                models.append((folder, display_name))
+                        if models:
+                            logger.info(f"Found {len(models)} VibeVoice model(s) in fallback directory: {fallback_dir}")
+                            vibevoice_dir = fallback_dir  # Update for logging
+                if not models:
+                    logger.warning("No valid models found in vibevoice directory")
+                    logger.info(f"Please download models to: {vibevoice_dir}")
             else:
                 # Single summary message instead of individual logs
                 logger.info(f"Found {len(models)} VibeVoice model(s) available")
@@ -295,12 +366,25 @@ def find_model_files_path(model_folder: str) -> Optional[str]:
     """
     try:
         import folder_paths
-        models_dir = folder_paths.get_folder_paths("checkpoints")[0]
+        models_dir = folder_paths.get_folder_paths("checkpoints")[1]
+        # Convert output path to models path
+        if "output" in models_dir:
+            models_dir = models_dir.replace("output", "models")
         vibevoice_dir = os.path.join(os.path.dirname(models_dir), "vibevoice")
         base_path = os.path.join(vibevoice_dir, model_folder)
 
         # Use recursive search to find model files
         result = find_model_files_path_recursive(base_path)
+
+        # If not found in primary location, try fallback
+        if not result:
+            fallback_dir = get_fallback_vibevoice_dir(vibevoice_dir)
+            if fallback_dir and os.path.exists(fallback_dir):
+                logger.info(f"Model not found in primary location, checking fallback: {fallback_dir}")
+                fallback_path = os.path.join(fallback_dir, model_folder)
+                result = find_model_files_path_recursive(fallback_path)
+                if result:
+                    logger.info(f"Found model files in fallback location: {result}")
 
         if result:
             logger.info(f"Found model files at: {result}")
@@ -886,7 +970,10 @@ class BaseVibeVoiceNode:
                 
                 # Set ComfyUI models directory
                 import folder_paths
-                models_dir = folder_paths.get_folder_paths("checkpoints")[0]
+                models_dir = folder_paths.get_folder_paths("checkpoints")[1]
+                # Convert output path to models path
+                if "output" in models_dir:
+                    models_dir = models_dir.replace("output", "models")
                 comfyui_models_dir = os.path.join(os.path.dirname(models_dir), "vibevoice")
                 os.makedirs(comfyui_models_dir, exist_ok=True)
                 
@@ -905,6 +992,18 @@ class BaseVibeVoiceNode:
 
                 # Find where the actual model files are
                 model_files_path = find_model_files_path(model_folder)
+
+                # If not found, try fallback directory
+                if not model_files_path:
+                    fallback_dir = get_fallback_vibevoice_dir(comfyui_models_dir)
+                    if fallback_dir and os.path.exists(fallback_dir):
+                        logger.info(f"Model not found in primary location, checking fallback: {fallback_dir}")
+                        fallback_path = os.path.join(fallback_dir, model_folder)
+                        fallback_result = find_model_files_path_recursive(fallback_path)
+                        if fallback_result:
+                            model_files_path = fallback_result
+                            comfyui_models_dir = fallback_dir  # Update to use fallback directory
+                            logger.info(f"Using model from fallback location: {model_files_path}")
 
                 if not model_files_path:
                     raise Exception(f"No valid model files found in {model_full_path}. Please ensure the model is properly downloaded.")
