@@ -295,7 +295,7 @@ def find_model_files_path(model_folder: str) -> Optional[str]:
     """
     try:
         import folder_paths
-        models_dir = folder_paths.get_folder_paths("checkpoints")[1]
+        models_dir = folder_paths.get_folder_paths("checkpoints")[0]
         vibevoice_dir = os.path.join(os.path.dirname(models_dir), "vibevoice")
         base_path = os.path.join(vibevoice_dir, model_folder)
 
@@ -886,7 +886,7 @@ class BaseVibeVoiceNode:
                 
                 # Set ComfyUI models directory
                 import folder_paths
-                models_dir = folder_paths.get_folder_paths("checkpoints")[1]
+                models_dir = folder_paths.get_folder_paths("checkpoints")[0]
                 comfyui_models_dir = os.path.join(os.path.dirname(models_dir), "vibevoice")
                 os.makedirs(comfyui_models_dir, exist_ok=True)
                 
