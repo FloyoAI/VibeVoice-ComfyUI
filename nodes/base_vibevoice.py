@@ -63,15 +63,46 @@ def get_fallback_vibevoice_dir(primary_dir: str) -> Optional[str]:
     Returns:
         Fallback directory path or None
     """
-    # Check if primary is in ssd_models, then fallback to comfyui-gpu-9000/models/vibevoice
+    # Check if primary is in ssd_models, then fallback to comfyui-gpu-*/models/vibevoice
     if "ssd_models" in primary_dir:
-        # Replace ssd_models with comfyui-gpu-9000/models
+        import re
+        
+        # Extract the base path before ssd_models
+        base_path = primary_dir.split("ssd_models")[0]
+        
+        # Try to find any comfyui-gpu-* directory
+        if os.path.exists(base_path):
+            try:
+                # List directories and look for comfyui-gpu-* or comfyui-cpu-* patterns
+                for item in os.listdir(base_path):
+                    item_path = os.path.join(base_path, item)
+                    if os.path.isdir(item_path):
+                        # Check for comfyui-gpu-* pattern (e.g., comfyui-gpu-9000, comfyui-gpu-9001)
+                        if re.match(r'^comfyui-gpu-\d+$', item):
+                            fallback_dir = primary_dir.replace("ssd_models", f"{item}/models")
+                            if os.path.exists(fallback_dir):
+                                logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
+                                return fallback_dir
+                
+                # If no GPU directory found, try CPU directories
+                for item in os.listdir(base_path):
+                    item_path = os.path.join(base_path, item)
+                    if os.path.isdir(item_path):
+                        # Check for comfyui-cpu-* pattern (e.g., comfyui-cpu-9000, comfyui-cpu-9001)
+                        if re.match(r'^comfyui-cpu-\d+$', item):
+                            fallback_dir = primary_dir.replace("ssd_models", f"{item}/models")
+                            if os.path.exists(fallback_dir):
+                                logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
+                                return fallback_dir
+            except (PermissionError, OSError):
+                pass
+        
+        # Fallback to original hardcoded paths if pattern matching fails
         fallback_dir = primary_dir.replace("ssd_models", "comfyui-gpu-9000/models")
         if os.path.exists(fallback_dir):
             logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
             return fallback_dir
         
-        # Also check for comfyui-cpu-9000 fallback
         fallback_dir = primary_dir.replace("ssd_models", "comfyui-cpu-9000/models")
         if os.path.exists(fallback_dir):
             logger.info(f"Using fallback vibevoice directory: {fallback_dir}")
